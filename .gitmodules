@@ -7,3 +7,4 @@
 [submodule "SIBR_viewers"]
 	path = SIBR_viewers
 	url = https://github.com/lionelpa/SIBR_viewers.git
+	branch = custom
