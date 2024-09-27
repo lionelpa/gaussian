@@ -26,6 +26,7 @@ class Scene:
         """b
         :param path: Path to colmap scene main folder.
         """
+        #[print(">>> " + str(x)) for x in vars(args.extract(args)).items()]
         self.model_path = args.model_path
         self.loaded_iter = None
         self.gaussians = gaussians
@@ -40,7 +41,11 @@ class Scene:
         self.train_cameras = {}
         self.test_cameras = {}
 
-        if os.path.exists(os.path.join(args.source_path, "sparse")):
+        if os.path.exists(os.path.join(args.source_path, "cameras.xml")):
+            print("Found cameras.xml! Assuming to be a LS7 data set!")
+            scene_info = sceneLoadTypeCallbacks["LS"](args.source_path, args.images, args.eval)
+        elif os.path.exists(os.path.join(args.source_path, "sparse")):
+            print("Found sparse folder. Assuming Colmap data set!")
             scene_info = sceneLoadTypeCallbacks["Colmap"](args.source_path, args.images, args.eval)
         elif os.path.exists(os.path.join(args.source_path, "transforms_train.json")):
             print("Found transforms_train.json file, assuming Blender data set!")

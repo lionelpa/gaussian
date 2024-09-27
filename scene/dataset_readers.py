@@ -11,10 +11,13 @@
 
 import os
 import sys
+import xml.etree.ElementTree as ET
+
 from PIL import Image
 from typing import NamedTuple
 from scene.colmap_loader import read_extrinsics_text, read_intrinsics_text, qvec2rotmat, \
     read_extrinsics_binary, read_intrinsics_binary, read_points3D_binary, read_points3D_text
+from utils.camera_utils import extract_trans_rot_from_xml_string
 from utils.graphics_utils import getWorld2View2, focal2fov, fov2focal
 import numpy as np
 import json
@@ -129,6 +132,110 @@ def storePly(path, xyz, rgb):
     ply_data = PlyData([vertex_element])
     ply_data.write(path)
 
+def readLSSceneInfo(path, images, eval):
+    camsXML_path = os.path.join(path, "cameras.xml")
+    print(">>> ", camsXML_path)
+    tree = ET.parse(camsXML_path)
+    root = tree.getroot()
+
+    # read sensors
+    sensors_root = root.find(".//chunk[@label='Chunk 1']//sensors") # first chunk contains all sensors (intrinsical data)
+    sensors = dict()
+    for s in sensors_root.findall("sensor"):
+        sid = int(s.get("id"))
+
+        c = s.find(".//calibration")
+        height = int(c.find(".//resolution").get("height"))
+        width = int(c.find(".//resolution").get("width"))
+        focal_in_pix = float(c.find(".//f").text)
+
+        # calculate fovs from
+        fovX = focal2fov(focal_in_pix, width)
+        fovY = focal2fov(focal_in_pix, height)
+
+        sensor_info = CameraInfo(uid=sid, FovX=fovX, FovY=fovY, width=width, height=height,
+                                 R=None, T=None, image=None, image_path=None, image_name=None)
+        sensors.update({sid: sensor_info})
+
+    # read cameras
+    cameras_root = root.find(".//chunk[@label='Chunk 1']//cameras") # first chunk contains all cameras (extrinsical data)
+    cams = []
+    for c in cameras_root.findall("camera"):
+        id = int(c.get("id"))
+        sid = int(c.get("sensor_id"))
+        sensor = sensors[sid]
+
+        mat_string = c.find(".//transform").text
+        T, R = extract_trans_rot_from_xml_string(mat_string)
+
+        label = c.get("label") # contains image name + extension
+        image_path = os.path.join(path, images, label)
+        image_name = Path(label).stem
+        image = Image.open(image_path)
+
+        # print(f"Cam with id {id} uses sensor with id {sid}. The image name is {image_name}. Sensor is null = {sensor==None}")
+        # print(sensor)
+
+        cam = CameraInfo(uid=id, FovY=sensor.FovY, FovX=sensor.FovX, width=sensor.width, height=sensor.height,
+                                 R=R, T=T, image=image, image_path=image_path, image_name=image_name)
+        cams.extend([cam])
+
+    train_cam_infos = cams
+    test_cam_infos = []
+
+    # todo 25.9.24: Double check if correct here
+    nerf_normalization = getNerfppNorm(train_cam_infos)
+
+
+    # todo 23.9.24 pcd should be generated randomly and then stored as ply file. Alternatively could use a colmap ply.
+    ply_path = os.path.join(path, "custom/points3d.ply")
+    if not os.path.exists(ply_path):
+        # Since this data set has no colmap data, we start with random points
+        # currently start with a single point at origin and points for cameras
+        print(f"Generating random point cloud ...")
+        xyz = np.array([np.zeros(3)])
+        colors = np.array([np.array([1, 0, 0])])
+        normals = np.array([np.zeros(3)])
+
+        # For Debug: Insert point for each camera and dotted line in view direction
+        for c in train_cam_infos:
+            xyz = np.vstack([xyz, c.T[:3]])
+            colors = np.vstack([colors, [0,1,0]])
+
+            step_size = 0.1
+            for i in range(1,5):
+                step = np.array([0,0,step_size*i])
+                step = c.R @ step
+                new_xyz = c.T + step
+
+                xyz = np.vstack([xyz, new_xyz])
+                colors = np.vstack([colors, [0, 0, 1]])
+
+        # print(xyz.shape)
+        # print(xyz)
+        # print(colors.shape)
+        # print(colors)
+        # print(normals.shape)
+        # print(normals)
+        pcd = BasicPointCloud(points=xyz, colors=colors * 255, normals=normals)
+
+        storePly(ply_path, xyz, colors*255)
+    try:
+        pcd = fetchPly(ply_path)
+        print("Saved and read ply")
+    except:
+        pcd = None
+        print("Reread of saved ply failed...")
+
+
+    scene_info = SceneInfo(point_cloud=pcd,
+                           train_cameras=train_cam_infos,
+                           test_cameras=test_cam_infos,
+                           nerf_normalization=nerf_normalization,
+                           ply_path=ply_path)
+    return scene_info
+
+
 def readColmapSceneInfo(path, images, eval, llffhold=8):
     try:
         cameras_extrinsic_file = os.path.join(path, "sparse/0", "images.bin")
@@ -140,6 +247,22 @@ def readColmapSceneInfo(path, images, eval, llffhold=8):
         cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.txt")
         cam_extrinsics = read_extrinsics_text(cameras_extrinsic_file)
         cam_intrinsics = read_intrinsics_text(cameras_intrinsic_file)
+
+
+    # print("\n==============================="*3,"\n")
+    # print(f">>> Extrinsics")
+    # print(f"type={type(cam_extrinsics)}<{type(list(cam_extrinsics.keys())[0])},{type(list(cam_extrinsics.values())[0])}>")
+    # print(f"Items: {len(cam_extrinsics.items())}")
+    # print()
+    # [print(f"{k}\t:\t{v}") for (k, v) in cam_extrinsics.items()]
+    # print(sorted([i.name for i in cam_extrinsics.values()]))
+    # print("\n")
+    # print(f">>> Intrinsics")
+    # print(f"type={type(cam_intrinsics)}<{type(list(cam_intrinsics.keys())[0])},{type(list(cam_intrinsics.values())[0])}>")
+    # print(f"Items: {len(cam_intrinsics.items())}")
+    # print()
+    # [print(f"{k}\t:\t{v}") for (k, v) in cam_intrinsics.items()]
+
 
     reading_dir = "images" if images == None else images
     cam_infos_unsorted = readColmapCameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=os.path.join(path, reading_dir))
@@ -235,7 +358,7 @@ def readNerfSyntheticInfo(path, white_background, eval, extension=".png"):
         # Since this data set has no colmap data, we start with random points
         num_pts = 100_000
         print(f"Generating random point cloud ({num_pts})...")
-        
+
         # We create random points inside the bounds of the synthetic Blender scenes
         xyz = np.random.random((num_pts, 3)) * 2.6 - 1.3
         shs = np.random.random((num_pts, 3)) / 255.0
@@ -256,5 +379,6 @@ def readNerfSyntheticInfo(path, white_background, eval, extension=".png"):
 
 sceneLoadTypeCallbacks = {
     "Colmap": readColmapSceneInfo,
-    "Blender" : readNerfSyntheticInfo
+    "Blender" : readNerfSyntheticInfo,
+    "LS" : readLSSceneInfo
 }
