@@ -68,6 +68,27 @@ def getNerfppNorm(cam_info):
 
     return {"translate": translate, "radius": radius}
 
+def getNerfppNormHylec(cam_info):
+    def get_center_and_diag(cam_centers):
+        cam_centers = np.vstack(cam_centers)
+        avg_cam_center = np.mean(cam_centers, axis=0, keepdims=True)
+        center = avg_cam_center
+        dist = np.linalg.norm(cam_centers - center, axis=0, keepdims=True)
+        diagonal = np.max(dist)
+        return center.flatten(), diagonal
+
+    cam_centers = []
+
+    for cam in cam_info:
+        cam_centers.append(cam.T)
+
+    center, diagonal = get_center_and_diag(cam_centers)
+    radius = diagonal * 1.1
+
+    translate = -center
+
+    return {"translate": translate, "radius": radius}
+
 def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
     cam_infos = []
     for idx, key in enumerate(cam_extrinsics):
@@ -134,7 +155,6 @@ def storePly(path, xyz, rgb):
 
 def readLSSceneInfo(path, images, eval):
     camsXML_path = os.path.join(path, "cameras.xml")
-    print(">>> ", camsXML_path)
     tree = ET.parse(camsXML_path)
     root = tree.getroot()
 
@@ -178,13 +198,13 @@ def readLSSceneInfo(path, images, eval):
 
         cam = CameraInfo(uid=id, FovY=sensor.FovY, FovX=sensor.FovX, width=sensor.width, height=sensor.height,
                                  R=R, T=T, image=image, image_path=image_path, image_name=image_name)
-        cams.extend([cam])
+        cams.append(cam)
 
     train_cam_infos = cams
     test_cam_infos = []
 
     # todo 25.9.24: Double check if correct here
-    nerf_normalization = getNerfppNorm(train_cam_infos)
+    nerf_normalization = getNerfppNormHylec(train_cam_infos)
 
 
     # todo 23.9.24 pcd should be generated randomly and then stored as ply file. Alternatively could use a colmap ply.
@@ -198,6 +218,11 @@ def readLSSceneInfo(path, images, eval):
         normals = np.array([np.zeros(3)])
 
         # For Debug: Insert point for each camera and dotted line in view direction
+        TT = nerf_normalization["translate"]
+
+        xyz = np.vstack([xyz, -TT])
+        colors = np.vstack([colors, [1, 0, 1]])
+
         for c in train_cam_infos:
             xyz = np.vstack([xyz, c.T[:3]])
             colors = np.vstack([colors, [0,1,0]])
@@ -211,18 +236,12 @@ def readLSSceneInfo(path, images, eval):
                 xyz = np.vstack([xyz, new_xyz])
                 colors = np.vstack([colors, [0, 0, 1]])
 
-        # print(xyz.shape)
-        # print(xyz)
-        # print(colors.shape)
-        # print(colors)
-        # print(normals.shape)
-        # print(normals)
         pcd = BasicPointCloud(points=xyz, colors=colors * 255, normals=normals)
 
         storePly(ply_path, xyz, colors*255)
     try:
         pcd = fetchPly(ply_path)
-        print("Saved and read ply")
+        print("Saved and reread ply")
     except:
         pcd = None
         print("Reread of saved ply failed...")
