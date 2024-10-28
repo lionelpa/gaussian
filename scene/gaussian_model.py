@@ -405,3 +405,102 @@ class GaussianModel:
     def add_densification_stats(self, viewspace_point_tensor, update_filter):
         self.xyz_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor.grad[update_filter,:2], dim=-1, keepdim=True)
         self.denom[update_filter] += 1
+
+    def save_ply_for_SIBR(self, path, scene=None, render_debug_origin=False):
+        cameras = []
+        cameras.extend(scene.getTrainCameras().cameras)
+        cameras.extend(scene.getTestCameras().cameras)
+        cameras.extend(scene.getValCameras().cameras)
+
+        mkdir_p(os.path.dirname(path))
+
+        # Read point cloud
+        ## global XYZ
+        xyz = self.get_xyz.detach().cpu().numpy()
+        normals = np.zeros_like(xyz)
+        ## color between 0 and 1 need to be mult by 255
+        color = self._features_dc.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy() * 255
+
+        # For debug append camera data for visualization
+        ## append cam data
+        cam_color = {
+            "A": [1, 0, 0],
+            "B": [1, 1, 1],
+            "C": [1, 1, 1],
+            "D": [0, 0, 1],
+            "E": [0, 0, 1],
+            "F": [1, 1, 1],
+            "G": [1, 1, 1],
+            "H": [1, 0, 0],
+            "T": [1, 1, 1]
+        }
+
+        # # For debug append camera data for visualization
+        # ## center cage
+        # ground_cams = [c for c in cameras if c.image_name[-1] == "1" and c.image_name[0] != "T"]
+        # gc_xyz = np.array([c.T for c in ground_cams])
+        # cage_floor_center = np.mean(gc_xyz, axis=0)
+
+        # ## rotate cage according to cam column
+        # A1 = [c for c in cameras if c.image_name == "A1"][0]
+        # A6 = [c for c in cameras if c.image_name == "A6"][0]
+        # RR = rotation_matrix_from_vectors(A6.T - A1.T, np.array([0, 1, 0]))
+
+        ## append cam data
+        if cameras is not None:
+            for cam in cameras:
+                xyz = np.vstack([xyz, cam.camera_center])
+                color = np.vstack([color, cam_color[cam.image_name[0]]])
+                normals = np.vstack([normals, [0, 0, 0]])
+
+                step_size = 0.1
+                for i in range(1, 5):
+                    step = np.array([0, 0, step_size * i])
+                    step = cam.R @ step
+                    new_xyz = cam.camera_center + step
+
+                    xyz = np.vstack([xyz, new_xyz])
+                    color = np.vstack([color, [0.2 * x for x in cam_color[cam.image_name[0]]]])
+                    normals = np.vstack([normals, [0, 0, 0]])
+
+        if render_debug_origin:
+            cyan = [0, 1, 1]
+            yellow = [1, 1, 0]
+            magenta = [1, 0, 1]
+
+            step_size = 0.05
+            for i in range(0, 20):
+                # right (x)
+                step = np.array([step_size * i, 0, 0])
+                xyz = np.vstack([xyz, step])
+                color = np.vstack([color, magenta])
+                normals = np.vstack([normals, [0, 0, 0]])
+
+                # up (y)
+                step = np.array([0, step_size * i, 0])
+                xyz = np.vstack([xyz, step])
+                color = np.vstack([color, cyan])
+                normals = np.vstack([normals, [0, 0, 0]])
+
+                # forward (z)
+                step = np.array([0, 0, step_size * i])
+                xyz = np.vstack([xyz, step])
+                color = np.vstack([color, yellow])
+                normals = np.vstack([normals, [0, 0, 0]])
+
+        # print(xyz.shape)
+        # print(normals.shape)
+        # print(color.shape, color.dtype, color[0,:])
+
+        dtype_full = [
+            ('x', 'f4'), ('y', 'f4'), ('z', 'f4'),  # XYZ coordinates
+            ('nx', 'f4'), ('ny', 'f4'), ('nz', 'f4'),  # Normals (set to zero)
+            ('red', 'f4'), ('green', 'f4'), ('blue', 'f4')  # Color channels
+        ]
+
+        elements = np.empty(xyz.shape[0], dtype=dtype_full)
+        attributes = np.concatenate((xyz, normals, color), axis=1)
+
+        elements[:] = list(map(tuple, attributes))
+        el = PlyElement.describe(elements, 'vertex')
+        PlyData([el]).write(path)

@@ -43,7 +43,7 @@ class Scene:
 
         if os.path.exists(os.path.join(args.source_path, "cameras.xml")):
             print("Found cameras.xml! Assuming to be a LS7 data set!")
-            scene_info = sceneLoadTypeCallbacks["LS"](args.source_path, args.images, args.eval)
+            scene_info = sceneLoadTypeCallbacks["LS7XML"](args.source_path, args.images, args.eval)
         elif os.path.exists(os.path.join(args.source_path, "sparse")):
             print("Found sparse folder. Assuming Colmap data set!")
             scene_info = sceneLoadTypeCallbacks["Colmap"](args.source_path, args.images, args.eval)
