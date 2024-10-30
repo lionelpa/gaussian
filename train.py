@@ -34,7 +34,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     gaussians = GaussianModel(dataset.sh_degree)
     scene = Scene(dataset, gaussians)
     print("Scene loading done")
-    gaussians.save_ply_for_SIBR("./output/init_gaussians_hylec.ply", scene, render_debug_origin=True)
+    gaussians.save_ply_for_SIBR("./output/gauss_init_gaussians_hylec.ply", scene, render_debug_origin=True)
     raise Exception("STOOOP")
 
     gaussians.training_setup(opt)

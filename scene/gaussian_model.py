@@ -408,9 +408,8 @@ class GaussianModel:
 
     def save_ply_for_SIBR(self, path, scene=None, render_debug_origin=False):
         cameras = []
-        cameras.extend(scene.getTrainCameras().cameras)
-        cameras.extend(scene.getTestCameras().cameras)
-        cameras.extend(scene.getValCameras().cameras)
+        cameras.extend(scene.getTrainCameras())
+        cameras.extend(scene.getTestCameras())
 
         mkdir_p(os.path.dirname(path))
 
@@ -418,21 +417,21 @@ class GaussianModel:
         ## global XYZ
         xyz = self.get_xyz.detach().cpu().numpy()
         normals = np.zeros_like(xyz)
-        ## color between 0 and 1 need to be mult by 255
+
         color = self._features_dc.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy() * 255
 
         # For debug append camera data for visualization
         ## append cam data
         cam_color = {
-            "A": [1, 0, 0],
-            "B": [1, 1, 1],
-            "C": [1, 1, 1],
-            "D": [0, 0, 1],
-            "E": [0, 0, 1],
-            "F": [1, 1, 1],
-            "G": [1, 1, 1],
-            "H": [1, 0, 0],
-            "T": [1, 1, 1]
+            "A": [255, 0, 0],
+            "B": [255, 255, 255],
+            "C": [255, 255, 255],
+            "D": [0, 0, 255],
+            "E": [0, 0, 255],
+            "F": [255, 255, 255],
+            "G": [255, 255, 255],
+            "H": [255, 0, 0],
+            "T": [255, 255, 255]
         }
 
         # # For debug append camera data for visualization
@@ -449,7 +448,8 @@ class GaussianModel:
         ## append cam data
         if cameras is not None:
             for cam in cameras:
-                xyz = np.vstack([xyz, cam.camera_center])
+                cam_center = cam.camera_center.cpu()
+                xyz = np.vstack([xyz, cam_center])
                 color = np.vstack([color, cam_color[cam.image_name[0]]])
                 normals = np.vstack([normals, [0, 0, 0]])
 
@@ -457,10 +457,10 @@ class GaussianModel:
                 for i in range(1, 5):
                     step = np.array([0, 0, step_size * i])
                     step = cam.R @ step
-                    new_xyz = cam.camera_center + step
+                    new_xyz = cam_center + step
 
                     xyz = np.vstack([xyz, new_xyz])
-                    color = np.vstack([color, [0.2 * x for x in cam_color[cam.image_name[0]]]])
+                    color = np.vstack([color, [0.7 * x for x in cam_color[cam.image_name[0]]]])
                     normals = np.vstack([normals, [0, 0, 0]])
 
         if render_debug_origin:
@@ -495,7 +495,7 @@ class GaussianModel:
         dtype_full = [
             ('x', 'f4'), ('y', 'f4'), ('z', 'f4'),  # XYZ coordinates
             ('nx', 'f4'), ('ny', 'f4'), ('nz', 'f4'),  # Normals (set to zero)
-            ('red', 'f4'), ('green', 'f4'), ('blue', 'f4')  # Color channels
+            ('red', 'uint8'), ('green', 'uint8'), ('blue', 'uint8')  # Color channels
         ]
 
         elements = np.empty(xyz.shape[0], dtype=dtype_full)

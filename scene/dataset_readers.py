@@ -152,7 +152,7 @@ def readLS7XMLSceneInfo(path, images, white_background=True):
     # todo 25.9.24: Double check if correct here
     nerf_normalization = getNerfppNormHylec(train_cam_infos)
 
-    ply_path = os.path.join(path, "pointcloud_rgb1.ply")
+    ply_path = os.path.join(path, "pointcloud_fZ_uY_rgb.ply")
     try:
         print("Fetching ply")
         pcd = fetchPly(ply_path)
