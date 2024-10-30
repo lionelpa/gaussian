@@ -16,7 +16,7 @@ from torch import nn
 import os
 from utils.system_utils import mkdir_p
 from plyfile import PlyData, PlyElement
-from utils.sh_utils import RGB2SH
+from utils.sh_utils import RGB2SH, SH2RGB
 from simple_knn._C import distCUDA2
 from utils.graphics_utils import BasicPointCloud
 from utils.general_utils import strip_symmetric, build_scaling_rotation
@@ -417,8 +417,8 @@ class GaussianModel:
         ## global XYZ
         xyz = self.get_xyz.detach().cpu().numpy()
         normals = np.zeros_like(xyz)
-
-        color = self._features_dc.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy() * 255
+        ## color between 0 and 1 need to be mult by 255
+        color = SH2RGB(self._features_dc.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()) * 255
 
         # For debug append camera data for visualization
         ## append cam data
@@ -464,9 +464,9 @@ class GaussianModel:
                     normals = np.vstack([normals, [0, 0, 0]])
 
         if render_debug_origin:
-            cyan = [0, 1, 1]
-            yellow = [1, 1, 0]
-            magenta = [1, 0, 1]
+            cyan = [0, 255, 255]
+            yellow = [255, 255, 0]
+            magenta = [255, 0, 255]
 
             step_size = 0.05
             for i in range(0, 20):

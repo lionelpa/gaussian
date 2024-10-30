@@ -90,7 +90,7 @@ def getNerfppNormHylec(cam_info):
     return {"translate": translate, "radius": radius}
 
 
-def readLS7XMLSceneInfo(path, images, white_background=True):
+def readLS7XMLSceneInfo(path, images, pcd_cam, white_background=True):
     camsXML_path = os.path.join(path, "cameras.xml")
     tree = ET.parse(camsXML_path)
     root = tree.getroot()
@@ -119,6 +119,7 @@ def readLS7XMLSceneInfo(path, images, white_background=True):
     cameras_root = root.find(
         ".//chunk[@label='Chunk 1']//cameras")  # first chunk contains all cameras (extrinsical data)
     cams = []
+    pcd_cam_c2w = None
     for c in cameras_root.findall("camera"):
         id = int(c.get("id"))
         sid = int(c.get("sensor_id"))
@@ -139,6 +140,10 @@ def readLS7XMLSceneInfo(path, images, white_background=True):
         image_name = Path(label).stem
         image = Image.open(image_path)
 
+        if image_name == pcd_cam:
+            print(f"Found perspective camera '{pcd_cam}' of hylec pcd!")
+            pcd_cam_c2w = c2w
+
         # print(f"Cam with id {id} uses sensor with id {sid}. The image name is {image_name}. Sensor is null = {sensor==None}")
         # print(sensor)
 
@@ -148,16 +153,26 @@ def readLS7XMLSceneInfo(path, images, white_background=True):
 
     train_cam_infos = cams
     test_cam_infos = []
+    assert pcd_cam_c2w is not None, f"Perspective cam for ply not found. Failed to find cam {pcd_cam}"
 
     # todo 25.9.24: Double check if correct here
     nerf_normalization = getNerfppNormHylec(train_cam_infos)
 
-    ply_path = os.path.join(path, "pointcloud_fZ_uY_rgb.ply")
+    # ply_path = os.path.join(path, "sparse/0/points3D.ply")
+    # ply_path = os.path.join(path, "pointcloud_fZ_uY_rgb.ply")
+    ply_path = os.path.join(path, "pointcloud_fZ_uY_rgb_2.ply")
+    # ply_path = os.path.join(path, "pointcloud_fZ_uY_rgb_third.ply")
     try:
-        print("Fetching ply")
+        print(f"Fetching ply from {ply_path}")
         pcd = fetchPly(ply_path)
         print("Finished fetching")
-    except:
+        xyz_homogenous = np.hstack([pcd.points, np.ones((pcd.points.shape[0], 1))])
+        print("xyz shape", xyz_homogenous.shape)
+        print("pcd c2w shape", pcd_cam_c2w.shape)
+        xyz_homogenous =  xyz_homogenous @ pcd_cam_c2w.T
+        pcd = BasicPointCloud(points=xyz_homogenous[:,:3], colors=pcd.colors, normals=pcd.normals)
+    except Exception as e:
+        print(">>> Error during pcd loading:\n", e)
         raise Exception(f"Error loading ply '{ply_path}'. Make sure path exists!")
 
     scene_info = SceneInfo(point_cloud=pcd,
