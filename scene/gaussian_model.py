@@ -407,6 +407,7 @@ class GaussianModel:
         self.denom[update_filter] += 1
 
     def save_ply_for_SIBR(self, path, scene=None, render_debug_origin=False):
+        print("Saving ply data for point cloud debugging...")
         cameras = []
         cameras.extend(scene.getTrainCameras())
         cameras.extend(scene.getTestCameras())
@@ -460,7 +461,7 @@ class GaussianModel:
                     new_xyz = cam_center + step
 
                     xyz = np.vstack([xyz, new_xyz])
-                    color = np.vstack([color, [0.7 * x for x in cam_color[cam.image_name[0]]]])
+                    color = np.vstack([color, [0.5 * x for x in cam_color[cam.image_name[0]]]])
                     normals = np.vstack([normals, [0, 0, 0]])
 
         if render_debug_origin:
