@@ -8,7 +8,7 @@
 #
 # For inquiries contact  george.drettakis@inria.fr
 #
-
+import json
 import os
 import torch
 from random import randint
@@ -190,6 +190,25 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
             tb_writer.add_scalar('total_points', scene.gaussians.get_xyz.shape[0], iteration)
         torch.cuda.empty_cache()
 
+def save_params_to_json(lp, op, pp, args, folder, filename="params_gs.json"):
+    # Ensure the output folder exists
+    os.makedirs(folder, exist_ok=True)
+    filepath = os.path.join(folder, filename)
+
+    # Use `vars()` to get the dictionary of each parameter group
+    params_dict = {
+        "ModelParams": vars(lp),
+        "OptimizationParams": vars(op),
+        "PipelineParams": vars(pp),
+        "GeneralArgs": vars(args)
+    }
+
+    # Write the dictionary to a JSON file
+    with open(filepath, 'w') as f:
+        json.dump(params_dict, f, indent=4)
+
+    print(f"Parameters saved to {filepath}")
+
 if __name__ == "__main__":
     # Set up command line argument parser
     parser = ArgumentParser(description="Training script parameters")
@@ -212,6 +231,9 @@ if __name__ == "__main__":
 
     # Initialize system state (RNG)
     safe_state(args.quiet)
+
+    # Save params
+    save_params_to_json(lp, op, pp, args, args.model_path, filename="params_gs.json")
 
     # Start GUI server, configure and run training
     network_gui.init(args.ip, args.port)
