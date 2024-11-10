@@ -197,9 +197,9 @@ def save_params_to_json(lp, op, pp, args, folder, filename="params_gs.json"):
 
     # Use `vars()` to get the dictionary of each parameter group
     params_dict = {
-        "ModelParams": vars(lp),
-        "OptimizationParams": vars(op),
-        "PipelineParams": vars(pp),
+        "ModelParams": vars(lp.extract(args)),
+        "OptimizationParams": vars(op.extract(args)),
+        "PipelineParams": vars(pp.extract(args)),
         "GeneralArgs": vars(args)
     }
 
